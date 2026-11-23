@@ -1,6 +1,6 @@
 # B-Minor Phase 1
 
-The Phase 1 front end now parses expressions into an abstract syntax tree (AST). The lexer also exposes the complete token stream, including comments, and reports lexical errors with their source positions.
+The Phase 1 front end parses B-Minor declarations and basic function bodies into an abstract syntax tree (AST). It also exposes the token stream and can parse a standalone expression.
 
 ## Build on Linux
 
@@ -8,7 +8,7 @@ Use a C++17 compiler. From the project root, run these commands with GCC:
 
 ```sh
 mkdir -p build
-g++ -std=c++17 -Wall -Wextra -pedantic src/main.cpp src/lexer.cpp src/parser.cpp -o build/bminor
+g++ -std=c++17 -Wall -Wextra -pedantic src/*.cpp -o build/bminor
 ```
 
 ## Run
@@ -42,7 +42,18 @@ Parse one expression and print its AST:
 ./build/bminor --expr-ast assets/expressions/precedence.bminor
 ```
 
-Use a file containing exactly one expression without a trailing semicolon. The parser skips comments. Indentation shows child nodes, and `@line:column` shows the start of each node’s source span. If parsing fails, the command reports the first error to standard error, exits with a nonzero status, and produces no AST. Parsing full B-Minor files and recovering between statements are later milestones.
+Use a file containing exactly one expression without a trailing semicolon.
+
+Parse declarations and function bodies with the program entry point:
+
+```sh
+./build/bminor --ast assets/valid/declarations.bminor
+./build/bminor --ast assets/valid/function-bodies.bminor
+```
+
+`--ast` accepts global variables, arrays, function prototypes, and definitions. A function body can contain blocks, local variable declarations, expression statements, and `return` statements. Control-flow statements, `print`, and recovery between statements are planned for the next parser milestone.
+
+Both AST modes skip comments. Indentation shows child nodes, and `@line:column` shows the start of each node’s source span. The first lexical or syntactic error goes to standard error, returns a nonzero exit status, and prevents the AST dump.
 
 ## Run the regression tests
 
@@ -53,12 +64,13 @@ sh tests/test-source-copy.sh
 sh tests/test-core-lexer.sh
 sh tests/test-literals-comments.sh
 sh tests/test-expression-parser.sh
+sh tests/test-program-parser.sh
 ```
 
-`test-source-copy.sh` compares all source fixtures byte for byte and checks file and usage errors. `test-core-lexer.sh` covers the core token kinds and positions. `test-literals-comments.sh` checks escaped literals, comment boundaries, and recovery after malformed input. `test-expression-parser.sh` compares AST shapes and checks source positions and diagnostics.
+`test-source-copy.sh` compares all source fixtures byte for byte and checks file and usage errors. `test-core-lexer.sh` covers the core token kinds and positions. `test-literals-comments.sh` checks literals, comments, and lexical recovery. `test-expression-parser.sh` checks expression AST shapes and diagnostics. `test-program-parser.sh` checks declarations, function bodies, and program diagnostics.
 
 ## Source layout
 
-`src/lexer.h` defines token and location types, and `src/lexer.cpp` scans source text. `src/parser.h` defines the expression AST, and `src/parser.cpp` implements the expression grammar. `src/main.cpp` handles file I/O, command-line options, and output.
+`src/lexer.h` defines token and location types, and `src/lexer.cpp` scans source text. `src/parser.h` defines the AST, and `src/parser.cpp` implements the grammar. `src/dump.cpp` renders the AST as text. `src/main.cpp` handles file I/O, command-line options, and diagnostics.
 
-See [lexical rules](docs/lexical-rules.md), [expression grammar](docs/expression-grammar.md), and [test inputs](assets/README.md) for checks by milestone.
+See the [lexical rules](docs/lexical-rules.md), [expression grammar](docs/expression-grammar.md), [declaration and statement grammar](docs/program-grammar.md), and [test inputs](assets/README.md).

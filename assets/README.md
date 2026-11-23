@@ -11,9 +11,10 @@ sh tests/test-source-copy.sh
 sh tests/test-core-lexer.sh
 sh tests/test-literals-comments.sh
 sh tests/test-expression-parser.sh
+sh tests/test-program-parser.sh
 ```
 
-The copy script exercises every fixture, including malformed ones. The lexer scripts check core tokens, literals, comments, positions, and lexical recovery. The expression script checks the AST and diagnostics. The declarations, statements, and renderer rows below describe checks for later versions.
+The copy script exercises every fixture, including malformed ones. The lexer scripts check core tokens, literals, comments, positions, and lexical recovery. The parser scripts check expression and program ASTs and first-error diagnostics. The control-flow, parser recovery, and renderer rows below describe checks for later versions.
 
 The three `io/` files cover a zero-byte input, a line comment that reaches end of file without a newline, and CRLF line endings. The attributes file alongside them keeps Git from normalizing the CRLF fixture.
 
@@ -30,8 +31,9 @@ Paths in the table are relative to `assets/`. Use the token and AST displays whe
 | Literal recovery | `invalid/lexer/literal-recovery.bminor` | Report four errors for the unclosed string, empty character, two-character literal, and unclosed character. Keep scanning `after_string` and `after_char` and emit `EOF`. |
 | Expression AST | `expressions/precedence.bminor`, `expressions/assignment.bminor`, `expressions/postfix.bminor`, `expressions/logic-and-literals.bminor` | Check multiplication before addition, left-associative subtraction, right-associative assignment and power, grouping, calls, subscripts, postfix increment, and boolean expressions. |
 | Expression diagnostics | `expressions/invalid/` | Report a missing operand or closing delimiter at the unexpected token or EOF. Exit without printing a partial AST. |
-| Expressions in programs | `valid/precedence.bminor`, `valid/factorial.bminor` | Once whole files can be parsed, check the grouped arithmetic and the recursive call used as the right operand of `*`. |
-| Declarations and statements | `valid/declarations.bminor`, `valid/statements.bminor` | Recognize the function prototype and definition, fixed-size arrays, initializer list, and indexed access. In `statements`, recognize a `for`, nested `if/else` blocks, a `print` with three arguments, and postfix `++` and `--`. AST nodes have source positions and a slot for later type information. |
+| Declarations and basic statements | `valid/declarations.bminor`, `valid/function-bodies.bminor` | Recognize prototypes and definitions, array types and initializers, array parameters, nested blocks, local declarations, expression statements, and both return forms. |
+| Expressions in programs | `valid/precedence.bminor` | Check grouped arithmetic and operator precedence in variable initializers and return statements. |
+| Control-flow statements | `valid/statements.bminor`, `valid/factorial.bminor` | Recognize `for`, `if`/`else`, `print`, and the recursive function call used as the right operand of `*`. |
 | Parser recovery | `invalid/parser/missing-expression.bminor`, `invalid/parser/missing-right-paren.bminor`, `invalid/parser/multiple-errors.bminor`, `invalid/parser/truncated-block.bminor` | Report the missing expression, the unclosed condition, or the missing closing brace. Recover the top-level `after` declaration in the first two files. Report both bad statements and retain `first_ok` and `second_ok` in `multiple-errors`. Stop at EOF in `truncated-block`. |
 | AST-aware highlighting | `valid/highlighting.bminor`, `valid/factorial.bminor`, `invalid/lexer/unknown-character.bminor` | Style `double_value` at its definition and call as a function name. Style `value` as a variable or parameter. Style comments and literals, and mark `@` while still highlighting the rest of the input. |
 | ANSI output | `valid/highlighting.bminor`, `io/no-final-newline.bminor` | Verify colors and resets, then compare the unstyled text with the original. Check the indentation and that the EOF fixture still has no final newline. |

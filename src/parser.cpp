@@ -44,9 +44,20 @@ public:
     Parser(std::string_view source, std::string_view filename)
         : lexer_(source, filename), current_(next_significant_token()) {}
 
-    ExpressionTree parse();
+    ExpressionTree parse_expression_file();
+    Program parse_program();
 
 private:
+    Declaration parse_declaration();
+    VariableDeclaration parse_variable(Token name);
+    FunctionDeclaration parse_function(Token name);
+    Parameter parse_parameter();
+    TypeSyntax parse_variable_type(bool array_parameter = false);
+    Token parse_base_type(bool allow_void);
+    Initializer parse_initializer(std::size_t nesting);
+    Block parse_block(std::size_t nesting);
+    Statement parse_statement(std::size_t nesting);
+
     ExpressionId parse_expression(int minimum_precedence, std::size_t nesting);
     ExpressionId parse_prefix(std::size_t nesting);
     ExpressionId parse_postfix(std::size_t nesting);
@@ -54,24 +65,182 @@ private:
     ExpressionId parse_primary(std::size_t nesting);
 
     Token next_significant_token();
+    const Token& peek();
     Token advance();
     bool matches(std::string_view spelling) const;
+    bool matches_keyword(std::string_view spelling) const;
     Token expect(std::string_view spelling, std::string_view message);
+    Token expect_identifier(std::string_view message);
     [[noreturn]] void fail(std::string_view message) const;
     ExpressionId add(ExpressionKind kind, SourceSpan span, std::optional<Token> token,
                      std::vector<ExpressionId> children = {});
 
     Lexer lexer_;
     Token current_;
+    std::optional<Token> lookahead_;
     std::vector<Expression> nodes_;
 };
 
-ExpressionTree Parser::parse() {
+ExpressionTree Parser::parse_expression_file() {
     const auto root = parse_expression(1, 0);
     if (current_.kind != TokenKind::EndOfFile) {
         fail("expected end of input after expression");
     }
     return {std::move(nodes_), root};
+}
+
+Program Parser::parse_program() {
+    const auto start = current_.location;
+    auto end_offset = start.offset;
+    std::vector<Declaration> declarations;
+    while (current_.kind != TokenKind::EndOfFile) {
+        declarations.push_back(parse_declaration());
+        end_offset = std::visit([](const auto& declaration) {
+            return declaration.span.end_offset;
+        }, declarations.back());
+    }
+    return {{start, end_offset}, std::move(declarations), std::move(nodes_)};
+}
+
+Declaration Parser::parse_declaration() {
+    const auto name = expect_identifier("expected declaration name");
+    expect(":", "expected ':' after declaration name");
+    if (matches_keyword("function")) {
+        return parse_function(name);
+    }
+    return parse_variable(name);
+}
+
+VariableDeclaration Parser::parse_variable(Token name) {
+    auto type = parse_variable_type();
+    std::optional<Initializer> initializer;
+    if (matches("=")) {
+        advance();
+        if (type.dimensions.empty() && matches("{")) {
+            fail("expected expression for scalar initializer");
+        }
+        initializer = parse_initializer(0);
+    }
+    const auto end = expect(";", "expected ';' after variable declaration");
+    return {{name.location, end_of(end)}, name, std::move(type), std::move(initializer)};
+}
+
+FunctionDeclaration Parser::parse_function(Token name) {
+    advance();
+    const auto base = parse_base_type(true);
+    TypeSyntax return_type{{base.location, end_of(base)}, base, {}};
+
+    expect("(", "expected '(' before function parameters");
+    std::vector<Parameter> parameters;
+    if (!matches(")")) {
+        parameters.push_back(parse_parameter());
+        while (matches(",")) {
+            advance();
+            parameters.push_back(parse_parameter());
+        }
+    }
+    expect(")", "expected ')' after function parameters");
+
+    if (matches(";")) {
+        const auto end = advance();
+        return {{name.location, end_of(end)}, name, std::move(return_type),
+                std::move(parameters), std::nullopt};
+    }
+    expect("=", "expected ';' or '=' after function signature");
+    auto body = parse_block(0);
+    const SourceSpan span{name.location, body.span.end_offset};
+    return {span, name, std::move(return_type), std::move(parameters), std::move(body)};
+}
+
+Parameter Parser::parse_parameter() {
+    const auto name = expect_identifier("expected parameter name");
+    expect(":", "expected ':' after parameter name");
+    auto type = parse_variable_type(true);
+    const SourceSpan span{name.location, type.span.end_offset};
+    return {span, name, std::move(type)};
+}
+
+TypeSyntax Parser::parse_variable_type(bool array_parameter) {
+    const auto start = current_.location;
+    std::vector<ArrayDimension> dimensions;
+    while (matches_keyword("array")) {
+        const auto prefix = advance();
+        expect("[", "expected '[' after 'array'");
+        const bool unsized = array_parameter && dimensions.empty();
+        std::optional<ExpressionId> size;
+        if (!unsized) {
+            size = parse_expression(1, 0);
+        }
+        const auto end = expect("]", unsized ? "expected ']' for unsized array parameter"
+                                              : "expected ']' after array dimension");
+        dimensions.push_back({{prefix.location, end_of(end)}, size});
+    }
+    const auto base = parse_base_type(false);
+    return {{start, end_of(base)}, base, std::move(dimensions)};
+}
+
+Token Parser::parse_base_type(bool allow_void) {
+    if (matches_keyword("integer") || matches_keyword("boolean") || matches_keyword("char")
+        || matches_keyword("string") || (allow_void && matches_keyword("void"))) {
+        return advance();
+    }
+    fail(allow_void ? "expected primitive return type or 'void'" : "expected primitive type");
+}
+
+Initializer Parser::parse_initializer(std::size_t nesting) {
+    if (!matches("{")) {
+        const auto expression = parse_expression(1, 0);
+        return {nodes_[expression].span, expression};
+    }
+    if (nesting >= maximum_nesting) {
+        fail("initializer nesting limit exceeded");
+    }
+
+    const auto open = advance();
+    std::vector<Initializer> items;
+    items.push_back(parse_initializer(nesting + 1));
+    while (matches(",")) {
+        advance();
+        items.push_back(parse_initializer(nesting + 1));
+    }
+    const auto close = expect("}", "expected '}' after array initializer");
+    return {{open.location, end_of(close)}, std::move(items)};
+}
+
+Block Parser::parse_block(std::size_t nesting) {
+    if (nesting >= maximum_nesting) {
+        fail("block nesting limit exceeded");
+    }
+    const auto open = expect("{", "expected '{' to start block");
+    std::vector<Statement> statements;
+    while (!matches("}") && current_.kind != TokenKind::EndOfFile) {
+        statements.push_back(parse_statement(nesting));
+    }
+    const auto close = expect("}", "expected '}' after block");
+    return {{open.location, end_of(close)}, std::move(statements)};
+}
+
+Statement Parser::parse_statement(std::size_t nesting) {
+    if (matches("{")) {
+        return {parse_block(nesting + 1)};
+    }
+    if (matches_keyword("return")) {
+        const auto start = advance().location;
+        std::optional<ExpressionId> value;
+        if (!matches(";")) {
+            value = parse_expression(1, 0);
+        }
+        const auto end = expect(";", "expected ';' after return statement");
+        return {ReturnStatement{{start, end_of(end)}, value}};
+    }
+    if (current_.kind == TokenKind::Identifier && peek().lexeme == ":") {
+        const auto name = advance();
+        advance();
+        return {parse_variable(name)};
+    }
+    const auto expression = parse_expression(1, 0);
+    const auto end = expect(";", "expected ';' after expression statement");
+    return {ExpressionStatement{{nodes_[expression].span.start, end_of(end)}, expression}};
 }
 
 ExpressionId Parser::parse_expression(int minimum_precedence, std::size_t nesting) {
@@ -181,10 +350,22 @@ Token Parser::next_significant_token() {
     return token;
 }
 
+const Token& Parser::peek() {
+    if (!lookahead_) {
+        lookahead_ = next_significant_token();
+    }
+    return *lookahead_;
+}
+
 Token Parser::advance() {
     const auto previous = current_;
-    current_ = next_significant_token();
+    current_ = peek();
+    lookahead_.reset();
     return previous;
+}
+
+bool Parser::matches_keyword(std::string_view spelling) const {
+    return current_.kind == TokenKind::Keyword && current_.lexeme == spelling;
 }
 
 bool Parser::matches(std::string_view spelling) const {
@@ -194,6 +375,13 @@ bool Parser::matches(std::string_view spelling) const {
 
 Token Parser::expect(std::string_view spelling, std::string_view message) {
     if (!matches(spelling)) {
+        fail(message);
+    }
+    return advance();
+}
+
+Token Parser::expect_identifier(std::string_view message) {
+    if (current_.kind != TokenKind::Identifier) {
         fail(message);
     }
     return advance();
@@ -212,7 +400,11 @@ ExpressionId Parser::add(ExpressionKind kind, SourceSpan span, std::optional<Tok
 }  // namespace
 
 ExpressionTree parse_expression_file(std::string_view source, std::string_view filename) {
-    return Parser(source, filename).parse();
+    return Parser(source, filename).parse_expression_file();
+}
+
+Program parse_program_file(std::string_view source, std::string_view filename) {
+    return Parser(source, filename).parse_program();
 }
 
 std::string_view expression_kind_name(ExpressionKind kind) {

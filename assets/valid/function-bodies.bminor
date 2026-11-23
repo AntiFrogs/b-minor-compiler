@@ -1,0 +1,18 @@
+seed: integer = 3 + 4 * 2;
+matrix: array [2] array [2] integer = {{1, 2}, {3, 4}};
+
+announce: function void (items: array [] integer, count: integer);
+
+value_at: function integer (items: array [] integer, at: integer) = {
+    current /* local */ : integer = items[at];
+    {
+        next: integer = current + seed;
+        current = next;
+    }
+    announce(items, at);
+    return current;
+}
+
+reset: function void () = {
+    return;
+}
