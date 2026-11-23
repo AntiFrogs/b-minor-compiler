@@ -4,6 +4,7 @@
 #include "lexer.h"
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -91,6 +92,29 @@ struct ExpressionStatement {
 
 struct Statement;
 
+struct IfStatement {
+    SourceSpan span;
+    ExpressionId condition;
+    std::unique_ptr<Statement> then_branch;
+    std::unique_ptr<Statement> else_branch;
+    std::optional<std::string> type_annotation = std::nullopt;
+};
+
+struct ForStatement {
+    SourceSpan span;
+    std::optional<ExpressionId> initializer;
+    std::optional<ExpressionId> condition;
+    std::optional<ExpressionId> update;
+    std::unique_ptr<Statement> body;
+    std::optional<std::string> type_annotation = std::nullopt;
+};
+
+struct PrintStatement {
+    SourceSpan span;
+    std::vector<ExpressionId> arguments;
+    std::optional<std::string> type_annotation = std::nullopt;
+};
+
 struct Block {
     SourceSpan span;
     std::vector<Statement> statements;
@@ -98,7 +122,8 @@ struct Block {
 };
 
 struct Statement {
-    std::variant<Block, VariableDeclaration, ReturnStatement, ExpressionStatement> node;
+    std::variant<Block, VariableDeclaration, ReturnStatement, ExpressionStatement,
+                 IfStatement, ForStatement, PrintStatement> node;
 };
 
 struct FunctionDeclaration {

@@ -112,8 +112,12 @@ private:
     void write(const Block& block, std::size_t depth) {
         write_node(output_, depth, "Block", block.span);
         for (const auto& statement : block.statements) {
-            std::visit([this, depth](const auto& node) { write(node, depth + 1); }, statement.node);
+            write(statement, depth + 1);
         }
+    }
+
+    void write(const Statement& statement, std::size_t depth) {
+        std::visit([this, depth](const auto& node) { write(node, depth); }, statement.node);
     }
 
     void write(const ReturnStatement& statement, std::size_t depth) {
@@ -126,6 +130,37 @@ private:
     void write(const ExpressionStatement& statement, std::size_t depth) {
         write_node(output_, depth, "ExprStmt", statement.span);
         write_expression(output_, expressions_, statement.expression, depth + 1);
+    }
+
+    void write(const IfStatement& statement, std::size_t depth) {
+        write_node(output_, depth, "IfStmt", statement.span);
+        write_expression(output_, expressions_, statement.condition, depth + 1);
+        write(*statement.then_branch, depth + 1);
+        if (statement.else_branch) {
+            write(*statement.else_branch, depth + 1);
+        }
+    }
+
+    void write(const ForStatement& statement, std::size_t depth) {
+        write_node(output_, depth, "ForStmt", statement.span);
+        write_clause(statement.initializer, depth + 1, "ForInitializer");
+        write_clause(statement.condition, depth + 1, "ForCondition");
+        write_clause(statement.update, depth + 1, "ForUpdate");
+        write(*statement.body, depth + 1);
+    }
+
+    void write_clause(std::optional<ExpressionId> expression, std::size_t depth, std::string_view label) {
+        if (expression) {
+            write_node(output_, depth, label, expressions_[*expression].span);
+            write_expression(output_, expressions_, *expression, depth + 1);
+        }
+    }
+
+    void write(const PrintStatement& statement, std::size_t depth) {
+        write_node(output_, depth, "PrintStmt", statement.span);
+        for (const auto argument : statement.arguments) {
+            write_expression(output_, expressions_, argument, depth + 1);
+        }
     }
 
     std::ostream& output_;

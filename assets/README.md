@@ -12,9 +12,10 @@ sh tests/test-core-lexer.sh
 sh tests/test-literals-comments.sh
 sh tests/test-expression-parser.sh
 sh tests/test-program-parser.sh
+sh tests/test-statements.sh
 ```
 
-The copy script exercises every fixture, including malformed ones. The lexer scripts check core tokens, literals, comments, positions, and lexical recovery. The parser scripts check expression and program ASTs and first-error diagnostics. The control-flow, parser recovery, and renderer rows below describe checks for later versions.
+The copy script exercises every fixture, including malformed ones. The lexer scripts check core tokens, literals, comments, positions, and lexical recovery. The parser scripts check expression and program ASTs and first-error diagnostics. The parser recovery and renderer rows below describe checks for later versions.
 
 The three `io/` files cover a zero-byte input, a line comment that reaches end of file without a newline, and CRLF line endings. The attributes file alongside them keeps Git from normalizing the CRLF fixture.
 
@@ -33,7 +34,7 @@ Paths in the table are relative to `assets/`. Use the token and AST displays whe
 | Expression diagnostics | `expressions/invalid/` | Report a missing operand or closing delimiter at the unexpected token or EOF. Exit without printing a partial AST. |
 | Declarations and basic statements | `valid/declarations.bminor`, `valid/function-bodies.bminor` | Recognize prototypes and definitions, array types and initializers, array parameters, nested blocks, local declarations, expression statements, and both return forms. |
 | Expressions in programs | `valid/precedence.bminor` | Check grouped arithmetic and operator precedence in variable initializers and return statements. |
-| Control-flow statements | `valid/statements.bminor`, `valid/factorial.bminor` | Recognize `for`, `if`/`else`, `print`, and the recursive function call used as the right operand of `*`. |
+| Control flow and `print` | `valid/statements.bminor`, `valid/factorial.bminor`, `valid/control-flow.bminor`, `valid/highlighting.bminor` | Recognize `for`, `if`/`else`, and `print`. Check the nearest-`if` rule for nested branches, optional loop clauses, argument order, and the recursive call used as the right operand of `*`. |
 | Parser recovery | `invalid/parser/missing-expression.bminor`, `invalid/parser/missing-right-paren.bminor`, `invalid/parser/multiple-errors.bminor`, `invalid/parser/truncated-block.bminor` | Report the missing expression, the unclosed condition, or the missing closing brace. Recover the top-level `after` declaration in the first two files. Report both bad statements and retain `first_ok` and `second_ok` in `multiple-errors`. Stop at EOF in `truncated-block`. |
 | AST-aware highlighting | `valid/highlighting.bminor`, `valid/factorial.bminor`, `invalid/lexer/unknown-character.bminor` | Style `double_value` at its definition and call as a function name. Style `value` as a variable or parameter. Style comments and literals, and mark `@` while still highlighting the rest of the input. |
 | ANSI output | `valid/highlighting.bminor`, `io/no-final-newline.bminor` | Verify colors and resets, then compare the unstyled text with the original. Check the indentation and that the EOF fixture still has no final newline. |

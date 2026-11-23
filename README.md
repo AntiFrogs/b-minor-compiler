@@ -1,6 +1,6 @@
 # B-Minor Phase 1
 
-The Phase 1 front end parses B-Minor declarations and basic function bodies into an abstract syntax tree (AST). It also exposes the token stream and can parse a standalone expression.
+The Phase 1 front end parses B-Minor declarations and statements into an abstract syntax tree (AST). It also exposes the token stream and can parse a standalone expression.
 
 ## Build on Linux
 
@@ -48,12 +48,12 @@ Parse declarations and function bodies with the program entry point:
 
 ```sh
 ./build/bminor --ast assets/valid/declarations.bminor
-./build/bminor --ast assets/valid/function-bodies.bminor
+./build/bminor --ast assets/valid/statements.bminor
 ```
 
-`--ast` accepts global variables, arrays, function prototypes, and definitions. A function body can contain blocks, local variable declarations, expression statements, and `return` statements. Control-flow statements, `print`, and recovery between statements are planned for the next parser milestone.
+`--ast` accepts global variables, arrays, function prototypes, and definitions. Function bodies support blocks, local declarations, expression statements, `return`, `if`/`else`, `for`, and `print`. Each `for` clause is optional, and `print` takes a comma-separated list of expressions or an empty list.
 
-Both AST modes skip comments. Indentation shows child nodes, and `@line:column` shows the start of each node’s source span. The first lexical or syntactic error goes to standard error, returns a nonzero exit status, and prevents the AST dump.
+Both AST modes skip comments. Indentation shows child nodes, and `@line:column` shows the start of each node’s source span. The first lexical or syntactic error goes to standard error, returns a nonzero exit status, and prevents the AST dump. Recovery across statements and declarations is the next parser milestone.
 
 ## Run the regression tests
 
@@ -65,9 +65,10 @@ sh tests/test-core-lexer.sh
 sh tests/test-literals-comments.sh
 sh tests/test-expression-parser.sh
 sh tests/test-program-parser.sh
+sh tests/test-statements.sh
 ```
 
-`test-source-copy.sh` compares all source fixtures byte for byte and checks file and usage errors. `test-core-lexer.sh` covers the core token kinds and positions. `test-literals-comments.sh` checks literals, comments, and lexical recovery. `test-expression-parser.sh` checks expression AST shapes and diagnostics. `test-program-parser.sh` checks declarations, function bodies, and program diagnostics.
+`test-source-copy.sh` compares all source fixtures byte for byte and checks file and usage errors. `test-core-lexer.sh` covers core token kinds and positions. `test-literals-comments.sh` checks literals, comments, and lexical recovery. `test-expression-parser.sh` and `test-program-parser.sh` check expression and declaration ASTs and diagnostics. `test-statements.sh` checks that all valid program fixtures parse, and covers branch binding, optional loop clauses, print arguments, and malformed statements.
 
 ## Source layout
 

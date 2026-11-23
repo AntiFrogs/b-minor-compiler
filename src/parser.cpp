@@ -39,6 +39,10 @@ std::size_t end_of(const Token& token) {
     return token.location.offset + token.lexeme.size();
 }
 
+std::size_t end_of(const Statement& statement) {
+    return std::visit([](const auto& node) { return node.span.end_offset; }, statement.node);
+}
+
 class Parser {
 public:
     Parser(std::string_view source, std::string_view filename)
@@ -57,8 +61,14 @@ private:
     Initializer parse_initializer(std::size_t nesting);
     Block parse_block(std::size_t nesting);
     Statement parse_statement(std::size_t nesting);
+    IfStatement parse_if(std::size_t nesting);
+    ForStatement parse_for(std::size_t nesting);
+    PrintStatement parse_print();
 
     ExpressionId parse_expression(int minimum_precedence, std::size_t nesting);
+    std::optional<ExpressionId> parse_optional_expression(std::string_view delimiter);
+    void parse_expression_list(std::vector<ExpressionId>& expressions,
+                               std::string_view delimiter, std::size_t nesting);
     ExpressionId parse_prefix(std::size_t nesting);
     ExpressionId parse_postfix(std::size_t nesting);
     ExpressionId parse_call(ExpressionId callee, std::size_t nesting);
@@ -208,28 +218,34 @@ Initializer Parser::parse_initializer(std::size_t nesting) {
 }
 
 Block Parser::parse_block(std::size_t nesting) {
-    if (nesting >= maximum_nesting) {
-        fail("block nesting limit exceeded");
-    }
     const auto open = expect("{", "expected '{' to start block");
     std::vector<Statement> statements;
     while (!matches("}") && current_.kind != TokenKind::EndOfFile) {
-        statements.push_back(parse_statement(nesting));
+        statements.push_back(parse_statement(nesting + 1));
     }
     const auto close = expect("}", "expected '}' after block");
     return {{open.location, end_of(close)}, std::move(statements)};
 }
 
 Statement Parser::parse_statement(std::size_t nesting) {
+    if (nesting >= maximum_nesting) {
+        fail("statement nesting limit exceeded");
+    }
     if (matches("{")) {
-        return {parse_block(nesting + 1)};
+        return {parse_block(nesting)};
+    }
+    if (matches_keyword("if")) {
+        return {parse_if(nesting)};
+    }
+    if (matches_keyword("for")) {
+        return {parse_for(nesting)};
+    }
+    if (matches_keyword("print")) {
+        return {parse_print()};
     }
     if (matches_keyword("return")) {
         const auto start = advance().location;
-        std::optional<ExpressionId> value;
-        if (!matches(";")) {
-            value = parse_expression(1, 0);
-        }
+        const auto value = parse_optional_expression(";");
         const auto end = expect(";", "expected ';' after return statement");
         return {ReturnStatement{{start, end_of(end)}, value}};
     }
@@ -241,6 +257,64 @@ Statement Parser::parse_statement(std::size_t nesting) {
     const auto expression = parse_expression(1, 0);
     const auto end = expect(";", "expected ';' after expression statement");
     return {ExpressionStatement{{nodes_[expression].span.start, end_of(end)}, expression}};
+}
+
+IfStatement Parser::parse_if(std::size_t nesting) {
+    const auto start = advance().location;
+    expect("(", "expected '(' after 'if'");
+    const auto condition = parse_expression(1, 0);
+    expect(")", "expected ')' after if condition");
+
+    auto then_branch = std::make_unique<Statement>(parse_statement(nesting + 1));
+    std::unique_ptr<Statement> else_branch;
+    if (matches_keyword("else")) {
+        advance();
+        else_branch = std::make_unique<Statement>(parse_statement(nesting + 1));
+    }
+    const auto end = end_of(else_branch ? *else_branch : *then_branch);
+    return {{start, end}, condition, std::move(then_branch), std::move(else_branch)};
+}
+
+ForStatement Parser::parse_for(std::size_t nesting) {
+    const auto start = advance().location;
+    expect("(", "expected '(' after 'for'");
+    const auto initializer = parse_optional_expression(";");
+    expect(";", "expected ';' after for initializer");
+    const auto condition = parse_optional_expression(";");
+    expect(";", "expected ';' after for condition");
+    const auto update = parse_optional_expression(")");
+    expect(")", "expected ')' after for update");
+
+    auto body = std::make_unique<Statement>(parse_statement(nesting + 1));
+    const SourceSpan span{start, end_of(*body)};
+    return {span, initializer, condition, update, std::move(body)};
+}
+
+PrintStatement Parser::parse_print() {
+    const auto start = advance().location;
+    std::vector<ExpressionId> arguments;
+    parse_expression_list(arguments, ";", 0);
+    const auto end = expect(";", "expected ';' after print statement");
+    return {{start, end_of(end)}, std::move(arguments)};
+}
+
+std::optional<ExpressionId> Parser::parse_optional_expression(std::string_view delimiter) {
+    if (matches(delimiter)) {
+        return std::nullopt;
+    }
+    return parse_expression(1, 0);
+}
+
+void Parser::parse_expression_list(std::vector<ExpressionId>& expressions,
+                                   std::string_view delimiter, std::size_t nesting) {
+    if (matches(delimiter)) {
+        return;
+    }
+    expressions.push_back(parse_expression(1, nesting));
+    while (matches(",")) {
+        advance();
+        expressions.push_back(parse_expression(1, nesting));
+    }
 }
 
 ExpressionId Parser::parse_expression(int minimum_precedence, std::size_t nesting) {
@@ -303,13 +377,7 @@ ExpressionId Parser::parse_postfix(std::size_t nesting) {
 ExpressionId Parser::parse_call(ExpressionId callee, std::size_t nesting) {
     advance();
     std::vector<ExpressionId> children{callee};
-    if (!matches(")")) {
-        children.push_back(parse_expression(1, nesting + 1));
-        while (matches(",")) {
-            advance();
-            children.push_back(parse_expression(1, nesting + 1));
-        }
-    }
+    parse_expression_list(children, ")", nesting + 1);
     const auto close = expect(")", "expected ')' after arguments");
     return add(ExpressionKind::Call, {nodes_[callee].span.start, end_of(close)},
                std::nullopt, std::move(children));
