@@ -1,0 +1,14 @@
+recover: function integer (i: integer) = {
+    broken: integer = 1 + ;
+    print "after first error";
+    if (true) {
+        inner_bad: integer = 2 + ;
+        print i;
+    }
+    for (i = 0 i < 2; i++) {
+        print "discarded loop body";
+    }
+    i = i + 1;
+    return i;
+}
+after: integer = 7;

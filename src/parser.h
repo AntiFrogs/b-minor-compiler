@@ -149,9 +149,15 @@ struct ParseError {
     std::string_view message;
 };
 
+struct ProgramParseResult {
+    Program program;
+    std::vector<ParseError> diagnostics;
+};
+
 // The source and filename must outlive the returned AST and any ParseError.
 ExpressionTree parse_expression_file(std::string_view source, std::string_view filename);
 Program parse_program_file(std::string_view source, std::string_view filename);
+ProgramParseResult parse_program_with_recovery(std::string_view source, std::string_view filename);
 std::string_view expression_kind_name(ExpressionKind kind);
 
 }  // namespace bminor

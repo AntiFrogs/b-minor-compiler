@@ -79,27 +79,35 @@ bool dump_tokens(std::string_view text, std::string_view filename) {
     return flush_output() && valid;
 }
 
+void write_parse_diagnostic(const bminor::ParseError& error) {
+    if (error.token.kind == bminor::TokenKind::Invalid) {
+        write_lexical_diagnostic(error.token);
+        return;
+    }
+    write_location(std::cerr, error.token.location);
+    std::cerr << ": error: " << error.message << ", found ";
+    if (error.token.kind == bminor::TokenKind::EndOfFile) {
+        std::cerr << "end of input";
+    } else {
+        bminor::write_lexeme(std::cerr, error.token.lexeme);
+    }
+    std::cerr.put('\n');
+}
+
 bool dump_ast(std::string_view text, std::string_view filename, Mode mode) {
-    try {
-        if (mode == Mode::ExpressionAst) {
-            bminor::write_expression_tree(std::cout, bminor::parse_expression_file(text, filename));
-        } else {
-            bminor::write_program_tree(std::cout, bminor::parse_program_file(text, filename));
+    if (mode == Mode::ProgramAst) {
+        const auto result = bminor::parse_program_with_recovery(text, filename);
+        for (const auto& diagnostic : result.diagnostics) {
+            write_parse_diagnostic(diagnostic);
         }
+        bminor::write_program_tree(std::cout, result.program);
+        return flush_output() && result.diagnostics.empty();
+    }
+    try {
+        bminor::write_expression_tree(std::cout, bminor::parse_expression_file(text, filename));
         return flush_output();
     } catch (const bminor::ParseError& error) {
-        if (error.token.kind == bminor::TokenKind::Invalid) {
-            write_lexical_diagnostic(error.token);
-        } else {
-            write_location(std::cerr, error.token.location);
-            std::cerr << ": error: " << error.message << ", found ";
-            if (error.token.kind == bminor::TokenKind::EndOfFile) {
-                std::cerr << "end of input";
-            } else {
-                bminor::write_lexeme(std::cerr, error.token.lexeme);
-            }
-            std::cerr.put('\n');
-        }
+        write_parse_diagnostic(error);
         return false;
     }
 }

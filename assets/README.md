@@ -13,9 +13,10 @@ sh tests/test-literals-comments.sh
 sh tests/test-expression-parser.sh
 sh tests/test-program-parser.sh
 sh tests/test-statements.sh
+sh tests/test-parser-recovery.sh
 ```
 
-The copy script exercises every fixture, including malformed ones. The lexer scripts check core tokens, literals, comments, positions, and lexical recovery. The parser scripts check expression and program ASTs and first-error diagnostics. The parser recovery and renderer rows below describe checks for later versions.
+The copy script exercises every fixture, including malformed ones. The lexer scripts check core tokens, literals, comments, positions, and lexical recovery. The parser scripts check expression and program ASTs, diagnostics, and partial program recovery. The renderer rows below describe checks for later versions.
 
 The three `io/` files cover a zero-byte input, a line comment that reaches end of file without a newline, and CRLF line endings. The attributes file alongside them keeps Git from normalizing the CRLF fixture.
 
@@ -35,7 +36,8 @@ Paths in the table are relative to `assets/`. Use the token and AST displays whe
 | Declarations and basic statements | `valid/declarations.bminor`, `valid/function-bodies.bminor` | Recognize prototypes and definitions, array types and initializers, array parameters, nested blocks, local declarations, expression statements, and both return forms. |
 | Expressions in programs | `valid/precedence.bminor` | Check grouped arithmetic and operator precedence in variable initializers and return statements. |
 | Control flow and `print` | `valid/statements.bminor`, `valid/factorial.bminor`, `valid/control-flow.bminor`, `valid/highlighting.bminor` | Recognize `for`, `if`/`else`, and `print`. Check the nearest-`if` rule for nested branches, optional loop clauses, argument order, and the recursive call used as the right operand of `*`. |
-| Parser recovery | `invalid/parser/missing-expression.bminor`, `invalid/parser/missing-right-paren.bminor`, `invalid/parser/multiple-errors.bminor`, `invalid/parser/truncated-block.bminor` | Report the missing expression, the unclosed condition, or the missing closing brace. Recover the top-level `after` declaration in the first two files. Report both bad statements and retain `first_ok` and `second_ok` in `multiple-errors`. Stop at EOF in `truncated-block`. |
+| Parser recovery | `invalid/parser/missing-expression.bminor`, `invalid/parser/missing-right-paren.bminor`, `invalid/parser/multiple-errors.bminor`, `invalid/parser/truncated-block.bminor` | Report the missing expression, closing parenthesis, or closing brace. Keep the top-level `after` declaration in the first two files. Report both bad declarations and retain `first_ok` and `second_ok` in `multiple-errors`. Retain the completed return when `truncated-block` ends at EOF. |
+| Recovery within blocks | `invalid/parser/block-recovery.bminor` | Report three errors, retain the valid `print` statements and the final assignment and return, and reach the top-level `after` declaration. The invalid loop and its body are omitted from the AST. |
 | AST-aware highlighting | `valid/highlighting.bminor`, `valid/factorial.bminor`, `invalid/lexer/unknown-character.bminor` | Style `double_value` at its definition and call as a function name. Style `value` as a variable or parameter. Style comments and literals, and mark `@` while still highlighting the rest of the input. |
 | ANSI output | `valid/highlighting.bminor`, `io/no-final-newline.bminor` | Verify colors and resets, then compare the unstyled text with the original. Check the indentation and that the EOF fixture still has no final newline. |
 | HTML output | `valid/highlighting.bminor`, `invalid/lexer/unknown-character.bminor` | Open the page in a browser. The literal text `<tag>&` should be visible, indentation should match the input, and the invalid token should be visibly marked in the second file. The page should work without JavaScript. |

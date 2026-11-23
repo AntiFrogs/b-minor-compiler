@@ -27,7 +27,7 @@ check_error() {
         printf 'Expected a program parse error for %s\n' "$1" >&2
         exit 1
     fi
-    test ! -s "$actual"
+    grep -q '^Program @' "$actual"
     printf '%s\n' "$2" > "$temp_dir/expected"
     diff -u "$temp_dir/expected" "$errors"
 }

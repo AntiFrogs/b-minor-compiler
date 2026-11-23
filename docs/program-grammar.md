@@ -49,6 +49,17 @@ print_statement   = "print" [ expression { "," expression } ] ";" ;
 
 The program stores declarations in source order. A function node stores its name token, return type, parameters, and an optional block. Initializers, array sizes, conditions, print arguments, and return values point into the same expression array. An `IfStmt` stores its condition and branches. A `ForStmt` stores its optional clauses and body. A `PrintStmt` stores its arguments in source order. Nodes keep their source spans and reserved type annotation fields. Statement and initializer nesting are limited to 256 levels.
 
-The parser reports the first error and prints the AST only after a successful parse. Panic-mode recovery within blocks and between declarations is the next increment.
+## Panic-mode recovery
+
+The program parser catches an error in a declaration or block statement, records its source location, and discards the expression nodes built by that failed construct. It then skips tokens to a synchronization point and resumes:
+
+- A semicolon ends the discarded construct. Semicolons inside a broken `for` header are skipped until the header closes or recovery reaches a statement boundary.
+- A closing brace at the current block depth is left for the block to consume. During synchronization, a braced region can be skipped as a unit. An unmatched top-level closing brace is consumed.
+- A new `name:` declaration or the statement keywords `if`, `for`, `print`, and `return` can also provide a restart point. Declaration lookahead accounts for parentheses so that a parameter in a malformed signature stays inside that signature.
+- At EOF, an unclosed block reports its missing `}` and retains statements already parsed. If an `if` condition is immediately followed by `{` where `)` was expected, the parser reports the missing `)` and uses the brace to start the then branch.
+
+The parser also records invalid lexer tokens encountered while skipping a damaged construct. Recovery is best effort when delimiters are missing. A failed construct may be omitted, and the partial tree can retain a block with an inferred closing boundary. The EBNF above describes valid inputs only.
+
+`parse_program_with_recovery` returns the partial tree and its diagnostics together. The `--ast` command uses that result and returns a failure status when it contains any diagnostics. The `parse_program_file` API still throws the first diagnostic for callers that require a complete tree, and `--expr-ast` still stops after its first error.
 
 The declaration and statement forms follow [Appendix B of Douglas Thain’s compiler textbook](https://dthain.github.io/books/compiler/chapterB.pdf). Optional loop clauses are described in [Chapter 11](https://dthain.github.io/books/compiler/chapter11.pdf). The unsized outer parameter dimension and empty `print` follow [the B-Minor language clarifications](https://dthain.github.io/compilers-fa23/bminor#questions-and-clarifications-for-2023).

@@ -43,13 +43,22 @@ std::size_t end_of(const Statement& statement) {
     return std::visit([](const auto& node) { return node.span.end_offset; }, statement.node);
 }
 
+enum class RecoveryScope { Program, Block };
+
+struct RecoveryPoint {
+    std::size_t offset;
+    std::size_t expression_count;
+    std::size_t braces;
+    std::size_t parentheses;
+};
+
 class Parser {
 public:
     Parser(std::string_view source, std::string_view filename)
         : lexer_(source, filename), current_(next_significant_token()) {}
 
     ExpressionTree parse_expression_file();
-    Program parse_program();
+    ProgramParseResult parse_program();
 
 private:
     Declaration parse_declaration();
@@ -82,6 +91,12 @@ private:
     Token expect(std::string_view spelling, std::string_view message);
     Token expect_identifier(std::string_view message);
     [[noreturn]] void fail(std::string_view message) const;
+    RecoveryPoint recovery_point() const;
+    void recover(ParseError error, RecoveryPoint point, RecoveryScope scope);
+    void synchronize(RecoveryPoint point, RecoveryScope scope);
+    void discard_token();
+    void report(ParseError error);
+    bool starts_declaration();
     ExpressionId add(ExpressionKind kind, SourceSpan span, std::optional<Token> token,
                      std::vector<ExpressionId> children = {});
 
@@ -89,6 +104,10 @@ private:
     Token current_;
     std::optional<Token> lookahead_;
     std::vector<Expression> nodes_;
+    std::vector<ParseError> diagnostics_;
+    std::size_t braces_ = 0;
+    std::size_t parentheses_ = 0;
+    std::optional<std::size_t> for_header_depth_;
 };
 
 ExpressionTree Parser::parse_expression_file() {
@@ -99,17 +118,23 @@ ExpressionTree Parser::parse_expression_file() {
     return {std::move(nodes_), root};
 }
 
-Program Parser::parse_program() {
+ProgramParseResult Parser::parse_program() {
     const auto start = current_.location;
     auto end_offset = start.offset;
     std::vector<Declaration> declarations;
     while (current_.kind != TokenKind::EndOfFile) {
-        declarations.push_back(parse_declaration());
-        end_offset = std::visit([](const auto& declaration) {
-            return declaration.span.end_offset;
-        }, declarations.back());
+        const auto point = recovery_point();
+        try {
+            declarations.push_back(parse_declaration());
+            end_offset = std::visit([](const auto& declaration) {
+                return declaration.span.end_offset;
+            }, declarations.back());
+        } catch (const ParseError& error) {
+            recover(error, point, RecoveryScope::Program);
+        }
     }
-    return {{start, end_offset}, std::move(declarations), std::move(nodes_)};
+    return {{{start, end_offset}, std::move(declarations), std::move(nodes_)},
+            std::move(diagnostics_)};
 }
 
 Declaration Parser::parse_declaration() {
@@ -221,9 +246,18 @@ Block Parser::parse_block(std::size_t nesting) {
     const auto open = expect("{", "expected '{' to start block");
     std::vector<Statement> statements;
     while (!matches("}") && current_.kind != TokenKind::EndOfFile) {
-        statements.push_back(parse_statement(nesting + 1));
+        const auto point = recovery_point();
+        try {
+            statements.push_back(parse_statement(nesting + 1));
+        } catch (const ParseError& error) {
+            recover(error, point, RecoveryScope::Block);
+        }
     }
-    const auto close = expect("}", "expected '}' after block");
+    if (current_.kind == TokenKind::EndOfFile) {
+        report({current_, "expected '}' after block"});
+        return {{open.location, current_.location.offset}, std::move(statements)};
+    }
+    const auto close = advance();
     return {{open.location, end_of(close)}, std::move(statements)};
 }
 
@@ -249,7 +283,7 @@ Statement Parser::parse_statement(std::size_t nesting) {
         const auto end = expect(";", "expected ';' after return statement");
         return {ReturnStatement{{start, end_of(end)}, value}};
     }
-    if (current_.kind == TokenKind::Identifier && peek().lexeme == ":") {
+    if (starts_declaration()) {
         const auto name = advance();
         advance();
         return {parse_variable(name)};
@@ -262,8 +296,14 @@ Statement Parser::parse_statement(std::size_t nesting) {
 IfStatement Parser::parse_if(std::size_t nesting) {
     const auto start = advance().location;
     expect("(", "expected '(' after 'if'");
+    const auto outer_parentheses = parentheses_ - 1;
     const auto condition = parse_expression(1, 0);
-    expect(")", "expected ')' after if condition");
+    if (matches("{")) {
+        report({current_, "expected ')' after if condition"});
+        parentheses_ = outer_parentheses;
+    } else {
+        expect(")", "expected ')' after if condition");
+    }
 
     auto then_branch = std::make_unique<Statement>(parse_statement(nesting + 1));
     std::unique_ptr<Statement> else_branch;
@@ -278,12 +318,14 @@ IfStatement Parser::parse_if(std::size_t nesting) {
 ForStatement Parser::parse_for(std::size_t nesting) {
     const auto start = advance().location;
     expect("(", "expected '(' after 'for'");
+    for_header_depth_ = parentheses_;
     const auto initializer = parse_optional_expression(";");
     expect(";", "expected ';' after for initializer");
     const auto condition = parse_optional_expression(";");
     expect(";", "expected ';' after for condition");
     const auto update = parse_optional_expression(")");
     expect(")", "expected ')' after for update");
+    for_header_depth_.reset();
 
     auto body = std::make_unique<Statement>(parse_statement(nesting + 1));
     const SourceSpan span{start, end_of(*body)};
@@ -427,6 +469,17 @@ const Token& Parser::peek() {
 
 Token Parser::advance() {
     const auto previous = current_;
+    if (previous.kind == TokenKind::Delimiter) {
+        if (previous.lexeme == "{") {
+            ++braces_;
+        } else if (previous.lexeme == "}" && braces_ != 0) {
+            --braces_;
+        } else if (previous.lexeme == "(") {
+            ++parentheses_;
+        } else if (previous.lexeme == ")" && parentheses_ != 0) {
+            --parentheses_;
+        }
+    }
     current_ = peek();
     lookahead_.reset();
     return previous;
@@ -459,6 +512,95 @@ void Parser::fail(std::string_view message) const {
     throw ParseError{current_, message};
 }
 
+RecoveryPoint Parser::recovery_point() const {
+    return {current_.location.offset, nodes_.size(), braces_, parentheses_};
+}
+
+void Parser::recover(ParseError error, RecoveryPoint point, RecoveryScope scope) {
+    report(error);
+    nodes_.resize(point.expression_count);
+    synchronize(point, scope);
+    braces_ = point.braces;
+    parentheses_ = point.parentheses;
+    for_header_depth_.reset();
+}
+
+void Parser::synchronize(RecoveryPoint point, RecoveryScope scope) {
+    const bool in_block = scope == RecoveryScope::Block;
+    // Blocks handle errors in their own statement lists. Unclosed braces at
+    // this checkpoint therefore belong to a discarded initializer.
+    const bool started_in_initializer = braces_ > point.braces;
+    bool skipped_braced_region = false;
+
+    while (current_.kind != TokenKind::EndOfFile) {
+        const bool at_scope = braces_ == point.braces;
+        if (at_scope && matches("}")) {
+            if (!in_block) {
+                advance();
+            }
+            return;
+        }
+        if (at_scope || (started_in_initializer && !skipped_braced_region)) {
+            const bool in_for_header = for_header_depth_ && parentheses_ >= *for_header_depth_;
+            if (matches(";") && !in_for_header) {
+                advance();
+                return;
+            }
+            if (current_.location.offset > point.offset) {
+                if (parentheses_ <= point.parentheses && starts_declaration()) {
+                    return;
+                }
+                if (in_block && (matches_keyword("if") || matches_keyword("for")
+                                 || matches_keyword("print") || matches_keyword("return"))) {
+                    return;
+                }
+            }
+            if (at_scope && matches("{")) {
+                skipped_braced_region = true;
+            }
+        }
+
+        const bool closes_skipped_region = skipped_braced_region && matches("}")
+                                        && braces_ > point.braces && braces_ - point.braces == 1;
+        discard_token();
+        if (closes_skipped_region) {
+            if (matches(";")) {
+                advance();
+            }
+            return;
+        }
+    }
+}
+
+void Parser::discard_token() {
+    if (current_.kind == TokenKind::Invalid) {
+        report({current_, {}});
+    }
+    advance();
+}
+
+void Parser::report(ParseError error) {
+    if (error.token.kind == TokenKind::Invalid) {
+        error.message = lexical_error_message(error.token.error);
+    }
+    if (!diagnostics_.empty()) {
+        const auto& previous = diagnostics_.back();
+        if (previous.token.location.offset == error.token.location.offset
+            && previous.message == error.message) {
+            return;
+        }
+    }
+    diagnostics_.push_back(error);
+}
+
+bool Parser::starts_declaration() {
+    if (current_.kind != TokenKind::Identifier) {
+        return false;
+    }
+    const auto& next = peek();
+    return next.kind == TokenKind::Delimiter && next.lexeme == ":";
+}
+
 ExpressionId Parser::add(ExpressionKind kind, SourceSpan span, std::optional<Token> token,
                          std::vector<ExpressionId> children) {
     nodes_.push_back({kind, span, token, std::move(children), std::nullopt});
@@ -472,6 +614,14 @@ ExpressionTree parse_expression_file(std::string_view source, std::string_view f
 }
 
 Program parse_program_file(std::string_view source, std::string_view filename) {
+    auto result = parse_program_with_recovery(source, filename);
+    if (!result.diagnostics.empty()) {
+        throw result.diagnostics.front();
+    }
+    return std::move(result.program);
+}
+
+ProgramParseResult parse_program_with_recovery(std::string_view source, std::string_view filename) {
     return Parser(source, filename).parse_program();
 }
 

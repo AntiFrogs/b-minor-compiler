@@ -53,7 +53,15 @@ Parse declarations and function bodies with the program entry point:
 
 `--ast` accepts global variables, arrays, function prototypes, and definitions. Function bodies support blocks, local declarations, expression statements, `return`, `if`/`else`, `for`, and `print`. Each `for` clause is optional, and `print` takes a comma-separated list of expressions or an empty list.
 
-Both AST modes skip comments. Indentation shows child nodes, and `@line:column` shows the start of each node’s source span. The first lexical or syntactic error goes to standard error, returns a nonzero exit status, and prevents the AST dump. Recovery across statements and declarations is the next parser milestone.
+Both AST modes skip comments. Indentation shows child nodes, and `@line:column` shows the start of each node’s source span. The expression mode reports its first error and exits without a tree. The program mode reports errors to standard error and writes a partial tree to standard output. Both modes return a nonzero exit status on errors.
+
+Try a file with two malformed declarations:
+
+```sh
+./build/bminor --ast assets/invalid/parser/multiple-errors.bminor
+```
+
+Expect two diagnostics, a nonzero exit status, and a tree containing `first_ok` and `second_ok`.
 
 ## Run the regression tests
 
@@ -66,9 +74,12 @@ sh tests/test-literals-comments.sh
 sh tests/test-expression-parser.sh
 sh tests/test-program-parser.sh
 sh tests/test-statements.sh
+sh tests/test-parser-recovery.sh
 ```
 
 `test-source-copy.sh` compares all source fixtures byte for byte and checks file and usage errors. `test-core-lexer.sh` covers core token kinds and positions. `test-literals-comments.sh` checks literals, comments, and lexical recovery. `test-expression-parser.sh` and `test-program-parser.sh` check expression and declaration ASTs and diagnostics. `test-statements.sh` checks that all valid program fixtures parse, and covers branch binding, optional loop clauses, print arguments, and malformed statements.
+
+`test-parser-recovery.sh` checks multiple diagnostics and the contents of partial trees.
 
 ## Source layout
 
