@@ -9,9 +9,10 @@ Follow the [build instructions](../README.md#build-on-linux), then run these com
 ```sh
 sh tests/test-source-copy.sh
 sh tests/test-core-lexer.sh
+sh tests/test-literals-comments.sh
 ```
 
-The copy script exercises every fixture, including malformed ones. The lexer script checks core tokens, positions, and recovery from unknown bytes. The literal, comment, parser, and renderer rows below describe checks for later versions.
+The copy script exercises every fixture, including malformed ones. The lexer scripts check core tokens, literals, comments, positions, and lexical recovery. The parser and renderer rows below describe checks for later versions.
 
 The three `io/` files cover a zero-byte input, a line comment that reaches end of file without a newline, and CRLF line endings. The attributes file alongside them keeps Git from normalizing the CRLF fixture.
 
@@ -25,6 +26,7 @@ Paths in the table are relative to `assets/`. Use the token and AST displays whe
 | Literals and comments | `valid/literals-and-comments.bminor`, `io/no-final-newline.bminor` | Check an integer, both boolean values, escaped quotes and backslashes, an escaped character, and an empty string. Comment markers inside `marker` belong to one string token. Both real comment forms are recognized, including the line comment at EOF. The multiline comment ends on line 12, and `marker` starts at line 13, column 1. |
 | Lexical diagnostics | `invalid/lexer/unknown-character.bminor` | Emit `INVALID` for `@` at line 1, column 20. Scanning continues to the declaration on line 2. |
 | Lexical diagnostics at EOF | `invalid/lexer/unterminated-string.bminor`, `invalid/lexer/unterminated-block-comment.bminor` | Report the unclosed literal or comment and terminate normally. The opening string quote is at line 1, column 19, and the block comment starts at line 2, column 1. |
+| Literal recovery | `invalid/lexer/literal-recovery.bminor` | Report four errors for the unclosed string, empty character, two-character literal, and unclosed character. Keep scanning `after_string` and `after_char` and emit `EOF`. |
 | Expression AST | `valid/precedence.bminor`, `valid/factorial.bminor` | In `plain`, `+` has `3 * 4` as its right operand. In `grouped`, `*` has `2 + 3` as its left operand. In `chained`, the left operand of the outer subtraction is `20 - 5`. In `powered`, `/` has `2 ^ 3` as its left operand. In `factorial`, the recursive call is the right operand of `*` and takes `n - 1` as its argument. |
 | Declarations and statements | `valid/declarations.bminor`, `valid/statements.bminor` | Recognize the function prototype and definition, fixed-size arrays, initializer list, and indexed access. In `statements`, recognize a `for`, nested `if/else` blocks, a `print` with three arguments, and postfix `++` and `--`. AST nodes have source positions and a slot for later type information. |
 | Parser recovery | `invalid/parser/missing-expression.bminor`, `invalid/parser/missing-right-paren.bminor`, `invalid/parser/multiple-errors.bminor`, `invalid/parser/truncated-block.bminor` | Report the missing expression, the unclosed condition, or the missing closing brace. Recover the top-level `after` declaration in the first two files. Report both bad statements and retain `first_ok` and `second_ok` in `multiple-errors`. Stop at EOF in `truncated-block`. |

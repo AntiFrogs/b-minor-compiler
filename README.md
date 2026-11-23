@@ -1,6 +1,6 @@
 # B-Minor Phase 1
 
-This version adds a token dump for core B-Minor syntax. It recognizes identifiers, keywords, decimal integers, booleans, operators, delimiters, and whitespace. The lexer reports invalid bytes with their source positions and continues to the end of the file. String literals, character literals, and comments are the next lexer milestone.
+The Phase 1 lexer recognizes B-Minor tokens, including string and character literals and both forms of comments. It reports lexical errors with their source positions and continues to the end of the file. The token stream is ready for the parser milestone.
 
 ## Build on Linux
 
@@ -19,10 +19,11 @@ Copy a file verbatim to standard output:
 ./build/bminor assets/valid/factorial.bminor
 ```
 
-Dump tokens from a source file that uses the supported token kinds:
+Dump tokens from a source file:
 
 ```sh
 ./build/bminor --tokens assets/valid/token-boundaries.bminor
+./build/bminor --tokens assets/valid/literals-and-comments.bminor
 ```
 
 Each line gives the filename, 1-based line and column, token kind, and quoted source spelling. For example:
@@ -31,7 +32,7 @@ Each line gives the filename, 1-based line and column, token kind, and quoted so
 assets/valid/token-boundaries.bminor:1:1 IDENTIFIER "returnValue"
 ```
 
-Token mode prints an `EOF` token after the last input byte. Invalid bytes produce `INVALID` tokens on standard output and diagnostics on standard error. The dump displays nonprintable and non-ASCII bytes as `\xHH`. The command exits with a nonzero status if it encountered any invalid bytes. Usage and file errors also go to standard error and return a nonzero status.
+Token mode prints comments and exact literal spellings, followed by an `EOF` token. It escapes quotes and backslashes for display and shows nonprintable and non-ASCII bytes as `\xHH`. A malformed literal, unclosed block comment, or unknown byte produces an `INVALID` token on standard output and a diagnostic on standard error. The process exits with a nonzero status after scanning an input with lexical errors. Try `./build/bminor --tokens assets/invalid/lexer/literal-recovery.bminor` to see the scanner recover on later lines.
 
 Copy mode preserves the input bytes, including line endings and a missing final newline. An empty file produces empty output in copy mode and one `EOF` token in token mode.
 
@@ -42,9 +43,10 @@ Build first, then run from the project root:
 ```sh
 sh tests/test-source-copy.sh
 sh tests/test-core-lexer.sh
+sh tests/test-literals-comments.sh
 ```
 
-The first script compares all source fixtures byte for byte and checks file and usage errors. The second checks the operator set, token boundaries and positions, separate sign tokens, and recovery after invalid input.
+`test-source-copy.sh` compares all source fixtures byte for byte and checks file and usage errors. `test-core-lexer.sh` covers the core token kinds and positions. `test-literals-comments.sh` checks escaped literals, comment boundaries, and recovery after malformed input.
 
 ## Source layout
 

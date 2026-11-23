@@ -11,10 +11,24 @@ enum class TokenKind {
     Keyword,
     Integer,
     Boolean,
+    String,
+    Character,
     Operator,
     Delimiter,
+    LineComment,
+    BlockComment,
     Invalid,
     EndOfFile,
+};
+
+enum class LexicalError {
+    None,
+    InvalidByte,
+    UnterminatedString,
+    UnterminatedCharacter,
+    InvalidLiteralByte,
+    InvalidCharacterLength,
+    UnterminatedBlockComment,
 };
 
 struct SourceLocation {
@@ -28,9 +42,11 @@ struct Token {
     TokenKind kind;
     std::string_view lexeme;
     SourceLocation location;
+    LexicalError error = LexicalError::None;
 };
 
 std::string_view token_kind_name(TokenKind kind);
+std::string_view lexical_error_message(LexicalError error);
 
 class Lexer {
 public:
@@ -40,8 +56,12 @@ public:
     Token next();
 
 private:
+    Token scan_literal(SourceLocation start, char quote);
+    Token scan_line_comment(SourceLocation start);
+    Token scan_block_comment(SourceLocation start);
     void advance();
-    Token make_token(TokenKind kind, SourceLocation start) const;
+    Token make_token(TokenKind kind, SourceLocation start,
+                     LexicalError error = LexicalError::None) const;
 
     std::string_view source_;
     std::string_view filename_;

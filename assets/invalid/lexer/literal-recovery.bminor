@@ -1,0 +1,6 @@
+bad_string: string = "unfinished
+after_string: integer = 1;
+empty_char: char = '';
+long_char: char = 'ab';
+bad_char: char = 'x
+after_char: integer = 2;

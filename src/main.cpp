@@ -64,8 +64,11 @@ bool dump_tokens(std::string_view text, std::string_view filename) {
 
         if (token.kind == bminor::TokenKind::Invalid) {
             write_location(std::cerr, token.location);
-            std::cerr << ": error: invalid byte ";
-            write_lexeme(std::cerr, token.lexeme);
+            std::cerr << ": error: " << bminor::lexical_error_message(token.error);
+            if (token.error == bminor::LexicalError::InvalidByte) {
+                std::cerr.put(' ');
+                write_lexeme(std::cerr, token.lexeme);
+            }
             std::cerr.put('\n');
             valid = false;
         }
