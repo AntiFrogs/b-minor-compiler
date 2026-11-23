@@ -1,4 +1,5 @@
 #include "dump.h"
+#include "highlight.h"
 #include "lexer.h"
 #include "parser.h"
 
@@ -12,7 +13,7 @@
 
 namespace {
 
-enum class Mode { Copy, Tokens, ExpressionAst, ProgramAst };
+enum class Mode { Copy, Tokens, ExpressionAst, ProgramAst, Ansi, Html };
 
 bool transfer_source(std::istream& source, std::ostream& destination,
                      const char* path, std::string_view destination_name) {
@@ -94,15 +95,7 @@ void write_parse_diagnostic(const bminor::ParseError& error) {
     std::cerr.put('\n');
 }
 
-bool dump_ast(std::string_view text, std::string_view filename, Mode mode) {
-    if (mode == Mode::ProgramAst) {
-        const auto result = bminor::parse_program_with_recovery(text, filename);
-        for (const auto& diagnostic : result.diagnostics) {
-            write_parse_diagnostic(diagnostic);
-        }
-        bminor::write_program_tree(std::cout, result.program);
-        return flush_output() && result.diagnostics.empty();
-    }
+bool dump_expression(std::string_view text, std::string_view filename) {
     try {
         bminor::write_expression_tree(std::cout, bminor::parse_expression_file(text, filename));
         return flush_output();
@@ -110,6 +103,22 @@ bool dump_ast(std::string_view text, std::string_view filename, Mode mode) {
         write_parse_diagnostic(error);
         return false;
     }
+}
+
+bool render_program(std::string_view text, std::string_view filename, Mode mode) {
+    const auto result = bminor::parse_program_with_recovery(text, filename);
+    for (const auto& diagnostic : result.diagnostics) {
+        write_parse_diagnostic(diagnostic);
+    }
+
+    if (mode == Mode::ProgramAst) {
+        bminor::write_program_tree(std::cout, result.program);
+    } else {
+        const auto spans = bminor::classify_source(text, filename, result);
+        const auto render = mode == Mode::Ansi ? bminor::render_ansi : bminor::render_html;
+        render(std::cout, text, spans);
+    }
+    return flush_output() && result.diagnostics.empty();
 }
 
 }  // namespace
@@ -123,10 +132,14 @@ int main(int argc, char* argv[]) {
         mode = Mode::ExpressionAst;
     } else if (argument == "--ast") {
         mode = Mode::ProgramAst;
+    } else if (argument == "--ansi") {
+        mode = Mode::Ansi;
+    } else if (argument == "--html") {
+        mode = Mode::Html;
     }
     const int path_index = mode == Mode::Copy ? 1 : 2;
     if (argc != path_index + 1) {
-        std::cerr << "Usage: bminor [--tokens | --expr-ast | --ast] <source-file>\n";
+        std::cerr << "Usage: bminor [--tokens | --expr-ast | --ast | --ansi | --html] <source-file>\n";
         return EXIT_FAILURE;
     }
 
@@ -147,6 +160,13 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string text = buffer.str();
-    const bool success = mode == Mode::Tokens ? dump_tokens(text, path) : dump_ast(text, path, mode);
-    return success ? EXIT_SUCCESS : EXIT_FAILURE;
+    switch (mode) {
+        case Mode::Tokens: return dump_tokens(text, path) ? EXIT_SUCCESS : EXIT_FAILURE;
+        case Mode::ExpressionAst: return dump_expression(text, path) ? EXIT_SUCCESS : EXIT_FAILURE;
+        case Mode::ProgramAst:
+        case Mode::Ansi:
+        case Mode::Html: return render_program(text, path, mode) ? EXIT_SUCCESS : EXIT_FAILURE;
+        case Mode::Copy: break;
+    }
+    return EXIT_FAILURE;
 }

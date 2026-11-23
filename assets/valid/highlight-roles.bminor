@@ -1,0 +1,14 @@
+repeat: function integer (value: integer);
+
+repeat: function integer (value: integer) = {
+    return value;
+}
+
+main: function integer () = {
+    {
+        repeat: integer = 3;
+        print repeat;
+    }
+    print (repeat)(2), repeat /* before arguments */ (3);
+    return 0;
+}
