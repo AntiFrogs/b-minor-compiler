@@ -1,0 +1,15 @@
+sum_to: function integer (limit: integer) = {
+    i: integer;
+    total: integer = 0;
+
+    for (i = 0; i < limit; i++) {
+        if (i % 2 == 0) {
+            total = total + i;
+        } else {
+            print "skipped: ", i, "\n";
+        }
+    }
+
+    i--;
+    return total;
+}

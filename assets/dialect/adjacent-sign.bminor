@@ -1,0 +1,5 @@
+signs: function integer (x: integer) = {
+    subtract: integer = x-1;
+    negative: integer = -1;
+    return subtract + negative;
+}

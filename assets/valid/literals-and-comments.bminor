@@ -1,0 +1,13 @@
+title:	string = "A quote: \" and a backslash: \\";
+newline: char = '\n';
+quote: char = '\'';
+mark: char = 'Z';
+count: integer = 42;
+enabled: boolean = true;
+disabled: boolean = false;
+empty_text: string = "";
+
+// return 99; this is a comment.
+/* This comment spans
+   two lines. */
+marker: string = "// and /* are string contents */";

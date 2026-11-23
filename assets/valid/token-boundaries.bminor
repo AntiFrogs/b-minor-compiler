@@ -1,0 +1,3 @@
+returnValue: function boolean (_count: integer, x1: integer) = {
+    return (_count<=x1&&x1>=0)||(_count==0&&x1!=2)||!(_count>x1);
+}

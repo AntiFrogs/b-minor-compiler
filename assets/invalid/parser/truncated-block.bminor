@@ -1,0 +1,2 @@
+incomplete: function integer () = {
+    return 7;

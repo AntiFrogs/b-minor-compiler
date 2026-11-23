@@ -1,0 +1,7 @@
+choose: function integer (flag: boolean) = {
+    if (flag {
+        return 1;
+    }
+    return 0;
+}
+after: integer = 7;

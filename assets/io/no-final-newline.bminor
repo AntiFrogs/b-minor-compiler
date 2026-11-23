@@ -1,0 +1,1 @@
+item: integer = 17; // comment ends at EOF

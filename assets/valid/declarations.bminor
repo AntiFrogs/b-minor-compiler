@@ -1,0 +1,8 @@
+read_item: function integer (index: integer);
+
+values: array [3] integer = {7, 11, 13};
+scratch: array [2] integer;
+
+read_item: function integer (index: integer) = {
+    return values[index];
+}

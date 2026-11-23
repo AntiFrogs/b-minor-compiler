@@ -1,0 +1,4 @@
+first_bad: integer = ;
+first_ok: integer = 1;
+second_bad: integer = ;
+second_ok: integer = 2;

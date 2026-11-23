@@ -1,0 +1,10 @@
+/* Render <tag> & keep "quotes". */
+double_value: function integer (value: integer) = {
+    return value * 2;
+}
+
+main: function integer () = {
+    value: integer = 3;
+    print "<tag>&", double_value(value), '\n';
+    return 0;
+}
