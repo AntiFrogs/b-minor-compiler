@@ -2,26 +2,16 @@
 
 Run the checks for the feature you just added and rerun earlier checks that the change could affect. Files under `valid/` are valid source inputs for the Phase 1 front end. Some are snippets without a `main` function. Files under `invalid/` are deliberately broken. `dialect/` contains a case to check against your grammar decisions.
 
-## First version
+## Automated checks for the current version
 
-Run these commands from the repository root on Linux. Every fixture, including the malformed ones, should copy byte for byte at the source-loading stage.
+Follow the [build instructions](../README.md#build-on-linux), then run these commands from the repository root:
 
 ```sh
-mkdir -p build
-g++ -std=c++17 -Wall -Wextra -pedantic src/main.cpp -o build/bminor
-
-(
-    set -e
-    for source in assets/io/*.bminor assets/valid/*.bminor assets/invalid/*/*.bminor assets/dialect/*.bminor
-    do
-        ./build/bminor "$source" > build/copied.bminor
-        cmp "$source" build/copied.bminor
-        printf 'PASS %s\n' "$source"
-    done
-)
+sh tests/test-source-copy.sh
+sh tests/test-core-lexer.sh
 ```
 
-Run `./build/bminor` and `./build/bminor assets/io/does-not-exist.bminor` separately. Both should return a nonzero exit status and print a diagnostic to standard error. The second diagnostic should contain the requested path.
+The copy script exercises every fixture, including malformed ones. The lexer script checks core tokens, positions, and recovery from unknown bytes. The literal, comment, parser, and renderer rows below describe checks for later versions.
 
 The three `io/` files cover a zero-byte input, a line comment that reaches end of file without a newline, and CRLF line endings. The attributes file alongside them keeps Git from normalizing the CRLF fixture.
 
@@ -44,7 +34,7 @@ Paths in the table are relative to `assets/`. Use the token and AST displays whe
 
 ### Dialect check
 
-Use `dialect/adjacent-sign.bminor` to check how the lexer and parser handle `x-1` and `-1`. Record the expected tokenization in the lexical rules and check that compact subtraction parses the same way as `x - 1`. Keep this probe separate until the signed-integer policy is documented.
+The current lexer emits `-` as a separate operator in both `x-1` and `-1`, as specified in the [lexical rules](../docs/lexical-rules.md#match-order). Once the parser is available, verify that `x-1` parses the same way as `x - 1`.
 
 The Phase 1 handout is the project reference. The array, prototype, and statement fixtures also follow the forms in Douglas Thain’s B-Minor language overview.
 
