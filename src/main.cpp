@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include "parser.h"
 
 #include <array>
 #include <cstdlib>
@@ -7,8 +8,11 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
+
+enum class Mode { Copy, Tokens, ExpressionAst };
 
 bool transfer_source(std::istream& source, std::ostream& destination,
                      const char* path, std::string_view destination_name) {
@@ -51,6 +55,24 @@ void write_lexeme(std::ostream& output, std::string_view lexeme) {
     output.put('"');
 }
 
+void write_lexical_diagnostic(const bminor::Token& token) {
+    write_location(std::cerr, token.location);
+    std::cerr << ": error: " << bminor::lexical_error_message(token.error);
+    if (token.error == bminor::LexicalError::InvalidByte) {
+        std::cerr.put(' ');
+        write_lexeme(std::cerr, token.lexeme);
+    }
+    std::cerr.put('\n');
+}
+
+bool flush_output() {
+    if (!std::cout.flush()) {
+        std::cerr << "Error: could not write to standard output.\n";
+        return false;
+    }
+    return true;
+}
+
 bool dump_tokens(std::string_view text, std::string_view filename) {
     bminor::Lexer lexer(text, filename);
     bool valid = true;
@@ -63,13 +85,7 @@ bool dump_tokens(std::string_view text, std::string_view filename) {
         std::cout.put('\n');
 
         if (token.kind == bminor::TokenKind::Invalid) {
-            write_location(std::cerr, token.location);
-            std::cerr << ": error: " << bminor::lexical_error_message(token.error);
-            if (token.error == bminor::LexicalError::InvalidByte) {
-                std::cerr.put(' ');
-                write_lexeme(std::cerr, token.lexeme);
-            }
-            std::cerr.put('\n');
+            write_lexical_diagnostic(token);
             valid = false;
         }
         if (token.kind == bminor::TokenKind::EndOfFile) {
@@ -77,20 +93,70 @@ bool dump_tokens(std::string_view text, std::string_view filename) {
         }
     }
 
-    if (!std::cout.flush()) {
-        std::cerr << "Error: could not write to standard output.\n";
+    return flush_output() && valid;
+}
+
+void write_expression_tree(const bminor::ExpressionTree& tree) {
+    struct PendingNode {
+        bminor::ExpressionId id;
+        std::size_t depth;
+    };
+    std::vector<PendingNode> pending{{tree.root, 0}};
+    while (!pending.empty() && std::cout) {
+        const auto [id, depth] = pending.back();
+        pending.pop_back();
+
+        const auto& node = tree.nodes[id];
+        std::cout << std::string(depth * 2, ' ') << bminor::expression_kind_name(node.kind);
+        if (node.token) {
+            if (node.kind == bminor::ExpressionKind::Literal) {
+                std::cout << ' ' << bminor::token_kind_name(node.token->kind);
+            }
+            std::cout.put(' ');
+            write_lexeme(std::cout, node.token->lexeme);
+        }
+        std::cout << " @" << node.span.start.line << ':' << node.span.start.column << '\n';
+
+        for (auto child = node.children.rbegin(); child != node.children.rend(); ++child) {
+            pending.push_back({*child, depth + 1});
+        }
+    }
+}
+
+bool dump_expression(std::string_view text, std::string_view filename) {
+    try {
+        write_expression_tree(bminor::parse_expression_file(text, filename));
+        return flush_output();
+    } catch (const bminor::ParseError& error) {
+        if (error.token.kind == bminor::TokenKind::Invalid) {
+            write_lexical_diagnostic(error.token);
+        } else {
+            write_location(std::cerr, error.token.location);
+            std::cerr << ": error: " << error.message << ", found ";
+            if (error.token.kind == bminor::TokenKind::EndOfFile) {
+                std::cerr << "end of input";
+            } else {
+                write_lexeme(std::cerr, error.token.lexeme);
+            }
+            std::cerr.put('\n');
+        }
         return false;
     }
-    return valid;
 }
 
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    const bool token_mode = argc > 1 && std::string_view(argv[1]) == "--tokens";
-    const int path_index = token_mode ? 2 : 1;
+    const std::string_view argument = argc > 1 ? argv[1] : "";
+    Mode mode = Mode::Copy;
+    if (argument == "--tokens") {
+        mode = Mode::Tokens;
+    } else if (argument == "--expr-ast") {
+        mode = Mode::ExpressionAst;
+    }
+    const int path_index = mode == Mode::Copy ? 1 : 2;
     if (argc != path_index + 1) {
-        std::cerr << "Usage: bminor [--tokens] <source-file>\n";
+        std::cerr << "Usage: bminor [--tokens | --expr-ast] <source-file>\n";
         return EXIT_FAILURE;
     }
 
@@ -101,7 +167,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    if (!token_mode) {
+    if (mode == Mode::Copy) {
         return transfer_source(source, std::cout, path, "standard output") ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
@@ -111,5 +177,6 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string text = buffer.str();
-    return dump_tokens(text, path) ? EXIT_SUCCESS : EXIT_FAILURE;
+    const bool success = mode == Mode::Tokens ? dump_tokens(text, path) : dump_expression(text, path);
+    return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }

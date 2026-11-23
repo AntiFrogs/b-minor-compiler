@@ -5,7 +5,8 @@ cd "$(dirname "$0")/.."
 temp_dir=$(mktemp -d build/source-copy.XXXXXX)
 trap 'rm -rf "$temp_dir"' 0
 
-for source in assets/io/*.bminor assets/valid/*.bminor assets/invalid/*/*.bminor assets/dialect/*.bminor
+for source in assets/io/*.bminor assets/valid/*.bminor assets/invalid/*/*.bminor assets/dialect/*.bminor \
+              assets/expressions/*.bminor assets/expressions/invalid/*.bminor
 do
     ./build/bminor "$source" > "$temp_dir/copy"
     cmp "$source" "$temp_dir/copy"
