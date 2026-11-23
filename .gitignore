@@ -1,0 +1,12 @@
+# Local build directories
+/build/
+/cmake-build-*/
+
+# Executables built in the repository root
+/bminor
+/bminor.exe
+
+# Compiler outputs
+*.o
+*.obj
+*.d
